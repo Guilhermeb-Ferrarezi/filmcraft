@@ -154,8 +154,9 @@ pub fn logo_cutout(img: &mut Image, e: &EffectInstance, cx: &FxCtx) {
     });
 }
 
-/// Ultra Key: a colour-difference keyer working in Y′CbCr against the key colour's chroma, with
-/// Premiere's matte generation, cleanup, spill suppression and colour correction stages.
+/// Ultra Key: a colour-difference keyer (for a key colour one channel leads, a green or blue screen;
+/// otherwise a Y′CbCr chroma distance), with matte generation, cleanup, spill suppression and colour
+/// correction stages.
 pub fn ultra_key(img: &mut Image, e: &EffectInstance, cx: &FxCtx) {
     let kc = cv(e, "key_color", cx);
     let k = rgb_to_ycbcr(kc[0], kc[1], kc[2], Matrix::Bt709);
@@ -177,6 +178,19 @@ pub fn ultra_key(img: &mut Image, e: &EffectInstance, cx: &FxCtx) {
     } else {
         0
     };
+    // A key that one channel clearly leads (a green or blue screen) is keyed by colour difference: the
+    // lead of that channel over the other two in a pixel, against the key colour's own lead, is the
+    // share of the key colour the pixel is made of. Fire, skin or smoke over a green screen have no
+    // green lead, so they stay opaque, and a pixel that is part screen and part foreground gets the
+    // alpha of its foreground share (a hue/chroma distance in Y′CbCr cannot tell yellow flames from
+    // the olive their edges blend with, and keyed or kept both together). Other keys (cyan, magenta,
+    // yellow, grey…) have no single leading channel and keep the chroma-distance matte.
+    let (lead1, lead2) = ((dom + 1) % 3, (dom + 2) % 3);
+    let key_lead = kc[dom] - kc[lead1].max(kc[lead2]);
+    let by_difference = key_lead >= 0.12;
+    let lead_share = |v: [f32; 3]| ((v[dom] - v[lead1].max(v[lead2])) / key_lead.max(1e-6)).clamp(0.0, 1.0);
+    // the share of the key colour at which a pixel is all background; Tolerance lowers it
+    let full_share = 1.0 - 0.9 * (pf("tolerance", fv(e, "tolerance", cx)) / 100.0).clamp(0.0, 1.0);
     // matte
     let n = img.w * img.h;
     let mut alpha = vec![1.0f32; n];
@@ -187,10 +201,16 @@ pub fn ultra_key(img: &mut Image, e: &EffectInstance, cx: &FxCtx) {
         }
         let v = enc(Image::unpremul([p[0], p[1], p[2], p[3]]));
         let y = rgb_to_ycbcr(v[0], v[1], v[2], Matrix::Bt709);
-        let proj = (y[1] * k[1] + y[2] * k[2]) / kmag2;
-        let perp = ((y[1] - proj * k[1]).powi(2) + (y[2] - proj * k[2]).powi(2)).sqrt() / kmag2.sqrt();
-        let keyness = proj.clamp(0.0, 1.5) * (1.0 - smoothstep(0.0, tol, perp));
-        let mut m = (1.0 - keyness * gain).clamp(0.0, 1.0);
+        let (keyness, mut m) = if by_difference {
+            // Transparency pulls the partly transparent pixels towards transparent
+            let keyness = (lead_share(v) / full_share).clamp(0.0, 1.0);
+            (keyness, (1.0 - keyness).powf(1.0 + transparency))
+        } else {
+            let proj = (y[1] * k[1] + y[2] * k[2]) / kmag2;
+            let perp = ((y[1] - proj * k[1]).powi(2) + (y[2] - proj * k[2]).powi(2)).sqrt() / kmag2.sqrt();
+            let keyness = proj.clamp(0.0, 1.5) * (1.0 - smoothstep(0.0, tol, perp));
+            (keyness, (1.0 - keyness * gain).clamp(0.0, 1.0))
+        };
         m += (y[0] - k[0]).max(0.0) * highlight * 2.0 * keyness.min(1.0);
         m += (k[0] - y[0]).max(0.0) * shadow * 2.0 * keyness.min(1.0);
         *a = ((m.clamp(0.0, 1.0) - pedestal) / (1.0 - pedestal)).clamp(0.0, 1.0);
@@ -223,6 +243,11 @@ pub fn ultra_key(img: &mut Image, e: &EffectInstance, cx: &FxCtx) {
     img.px.par_chunks_mut(4).zip(alpha.par_iter()).for_each(|(p, &a)| {
         let src_a = p[3];
         let mut v = enc(Image::unpremul([p[0], p[1], p[2], p[3]]));
+        if by_difference {
+            // take the key colour back out of the mix: p = a·foreground + (1 − a)·key
+            let share = (1.0 - lead_share(v)).clamp(0.05, 1.0);
+            v = [0, 1, 2].map(|c| ((v[c] - (1.0 - share) * kc[c]) / share).clamp(0.0, 1.0));
+        }
         let (o1, o2) = (v[(dom + 1) % 3], v[(dom + 2) % 3]);
         let limit = o1.max(o2) * (1.0 - range) + (o1 + o2) * 0.5 * range;
         let excess = (v[dom] - limit).max(0.0);
