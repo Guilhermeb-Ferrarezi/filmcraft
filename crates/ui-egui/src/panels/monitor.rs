@@ -535,9 +535,9 @@ fn eyedropper(app: &mut FilmcraftApp, ui: &mut egui::Ui, resp: &egui::Response, 
         app.ui.status = tl!("Eyedropper: no picture to sample").to_string();
         return;
     };
-    // the parameter stores linear values, like the colour picker beside it
-    let lin = egui::Rgba::from(Color32::from_rgb(rgb[0], rgb[1], rgb[2]));
-    let mut params = json!({"clip": armed.clip, "effect": armed.effect, "param": armed.param, "value": [lin.r(), lin.g(), lin.b(), 1.0]});
+    // colour parameters are sRGB-encoded like the monitor's pixels: `#rrggbb` ÷ 255, no conversion
+    let value = crate::panels::effect_controls::swatch_value(Color32::from_rgb(rgb[0], rgb[1], rgb[2]), 1.0);
+    let mut params = json!({"clip": armed.clip, "effect": armed.effect, "param": armed.param, "value": value});
     if let Some(k) = armed.mask {
         params["mask"] = json!(k);
     }
