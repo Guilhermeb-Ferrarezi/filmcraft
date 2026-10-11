@@ -15,7 +15,7 @@ jobs:
         continue-on-error: true
       - run: cargo clippy -p filmcraft-ui-egui --all-targets -- -D warnings
         continue-on-error: true
-      - run: cargo test -p filmcraft-ui-egui cursors timeline
+      - run: cargo test -p filmcraft-ui-egui
         continue-on-error: true
       - run: cargo xtask layers
         continue-on-error: true
@@ -25,3 +25,4 @@ jobs:
         with:
           name: cursor-svg
           path: target/cursor-svg
+
