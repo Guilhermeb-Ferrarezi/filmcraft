@@ -497,6 +497,9 @@ fn keyers_known_values() {
             img.px[(y * 8 + x) * 4..(y * 8 + x) * 4 + 4].copy_from_slice(&[grey[0], grey[1], grey[2], 1.0]);
         }
     }
+    // a pixel that is part screen, part foreground: the Setting presets differ on it
+    let mix = dec([0.3, 0.7, 0.1]);
+    img.px[3 * 4..3 * 4 + 4].copy_from_slice(&[mix[0], mix[1], mix[2], 1.0]);
     let o = run("ultra_key", &inst("ultra_key"), &img, &cx());
     assert!(o.get(1, 0)[3] < 0.05, "screen {:?}", o.get(1, 0));
     assert!(o.get(6, 0)[3] > 0.95, "fg {:?}", o.get(6, 0));
@@ -530,6 +533,41 @@ fn keyers_known_values() {
     let o = run("logo_cutout", &e, &solid(1, 1, [0.5, 0.5, 0.5]), &cx());
     let p = o.get(0, 0);
     assert!(close(p[3], 0.5, 1e-3) && p[0] < 1e-3, "{p:?}");
+}
+
+/// Fire over a green screen: the flames have no green lead, so they stay opaque and untouched; the
+/// smoke where flame and screen blend gets a partial alpha and loses the screen's green.
+#[test]
+fn ultra_key_keeps_fire_on_green_and_takes_the_green_out_of_smoke() {
+    let key = [0.0, 0.8, 0.2];
+    let flame = [1.0, 0.8, 0.1];
+    let smoke = [0.5, 0.7, 0.1];
+    let mut img = solid(3, 1, key);
+    for (x, c) in [(1, flame), (2, smoke)] {
+        let l = dec(c);
+        img.px[x * 4..x * 4 + 4].copy_from_slice(&[l[0], l[1], l[2], 1.0]);
+    }
+    let o = run("ultra_key", &inst("ultra_key"), &img, &cx());
+    assert!(o.get(0, 0)[3] < 0.05, "screen {:?}", o.get(0, 0));
+    let f = enc_px(&o, 1, 0);
+    assert!(f[3] > 0.95, "flame alpha {f:?}");
+    assert!((0..3).all(|c| close(f[c], flame[c], 0.04)), "flame colour {f:?} against {flame:?}");
+    let s = enc_px(&o, 2, 0);
+    assert!(s[3] > 0.1 && s[3] < 0.9, "smoke alpha {s:?}");
+    assert!(s[1] <= s[0].max(s[2]) + 0.05, "smoke keeps a green lead {s:?}");
+}
+
+/// A key colour no single channel leads (yellow here) still keys: it falls back to the chroma distance.
+#[test]
+fn ultra_key_with_a_yellow_key_still_removes_it() {
+    let mut e = inst("ultra_key");
+    set(&mut e, "key_color", ParamValue::Color([1.0, 0.9, 0.0, 1.0]));
+    let mut img = solid(2, 1, [1.0, 0.9, 0.0]);
+    let l = dec([0.1, 0.2, 0.7]);
+    img.px[4..8].copy_from_slice(&[l[0], l[1], l[2], 1.0]);
+    let o = run("ultra_key", &e, &img, &cx());
+    assert!(o.get(0, 0)[3] < 0.05, "key {:?}", o.get(0, 0));
+    assert!(o.get(1, 0)[3] > 0.95, "blue {:?}", o.get(1, 0));
 }
 
 #[test]
