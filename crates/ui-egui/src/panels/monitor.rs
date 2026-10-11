@@ -177,8 +177,12 @@ pub fn show(app: &mut FilmcraftApp, ui: &mut egui::Ui, rect: Rect, which: Which)
         let screen_scale = (pic.width() * ppp / frame_size.0.max(1) as f32).max(pic.height() * ppp / frame_size.1.max(1) as f32).min(1.0);
         let scale = quantize_scale(res.scale().min(screen_scale.max(1.0 / 32.0)));
         let frame = rate.frame_at(time);
-        let rev = match target {
-            Target::Item(i) => app.item_revision(i),
+        // while an eyedropper is armed the Program shows the sequence without the armed effect (the
+        // green an Ultra Key removes is back on screen to be picked), under a revision of its own
+        let picking = if which == Which::Program { eyedropper_project(app, &ctx) } else { None };
+        let rev = match (&picking, target) {
+            (Some((_, r)), _) => *r,
+            (_, Target::Item(i)) => app.item_revision(i),
             _ => app.session.revision,
         };
         let size_key = (scale * 1000.0) as u32;
@@ -192,7 +196,7 @@ pub fn show(app: &mut FilmcraftApp, ui: &mut egui::Ui, rect: Rect, which: Which)
         // Draft decoding (opt-in): only while playing at 1/2 resolution or lower.
         let draft = crate::frames::draft_playback(playing, scale, app.session.prefs.playback.draft_decode);
         let key = FrameKey { target, frame, size: size_key, revision: rev, draft };
-        let project = app.session.project.clone();
+        let project = picking.map(|(p, _)| p).unwrap_or_else(|| app.session.project.clone());
         if playing {
             let preroll = which == Which::Program && app.playback.preroll.is_some();
             let speed = if which == Which::Program { app.playback.speed } else { app.source_playback.clock.speed };
@@ -478,6 +482,32 @@ fn cpu_texture(
 /// Output scale of the frame an eyedropper samples (half size is plenty and quick to render).
 const EYEDROPPER_SCALE: f32 = 0.5;
 
+/// The project as the armed eyedropper's colour should be picked from it: the active sequence with
+/// the armed effect switched off (an Ultra Key has removed the green it is asked to key; picking from
+/// its result would leave nothing to pick), and the revision to render it under, apart from the
+/// project's own so the two never share cached frames. The copy is kept until the project or the
+/// armed effect changes. `None` while no eyedropper is armed.
+fn eyedropper_project(app: &FilmcraftApp, ctx: &egui::Context) -> Option<(std::sync::Arc<filmcraft_project::Project>, u64)> {
+    let armed = app.ui.eyedropper.as_ref()?;
+    let seq = app.session.state.active_sequence?;
+    let revision = app.session.revision ^ 0x5eed_d70b_0000_0000 ^ armed.clip.rotate_left(17) ^ armed.effect as u64;
+    let id = egui::Id::new("eyedropper-project");
+    if let Some((r, p)) = ctx.data(|d| d.get_temp::<(u64, std::sync::Arc<filmcraft_project::Project>)>(id))
+        && r == revision
+    {
+        return Some((p, r));
+    }
+    let mut project = (*app.session.project).clone();
+    if let Some(e) =
+        project.sequence_mut(seq).and_then(|q| q.find_item_mut(filmcraft_project::ClipId(armed.clip))).and_then(|(_, it)| it.effects.get_mut(armed.effect))
+    {
+        e.enabled = false;
+    }
+    let project = std::sync::Arc::new(project);
+    ctx.data_mut(|d| d.insert_temp(id, (revision, project.clone())));
+    Some((project, revision))
+}
+
 /// Eyedropper: while a colour parameter's eyedropper is armed (Effect Controls), the Program picture
 /// takes a crosshair and a click fills that parameter with the colour under the pointer. The colour is
 /// read from a render of the sequence at the playhead with the armed effect switched off (an Ultra Key
@@ -503,19 +533,14 @@ fn eyedropper(app: &mut FilmcraftApp, ui: &mut egui::Ui, pic: Rect, target: Targ
     if !(over && released) {
         return;
     }
-    let (Some(pos), Target::Sequence(seq)) = (pointer, target) else { return };
+    let (Some(pos), Target::Sequence(_)) = (pointer, target) else { return };
     if pic.width() <= 0.0 || pic.height() <= 0.0 {
         return;
     }
+    let Some((project, _)) = eyedropper_project(app, &ctx) else { return };
     app.ui.eyedropper = None;
     let uv = (((pos.x - pic.min.x) / pic.width()).clamp(0.0, 1.0), ((pos.y - pic.min.y) / pic.height()).clamp(0.0, 1.0));
-    let mut project = (*app.session.project).clone();
-    if let Some(e) =
-        project.sequence_mut(seq).and_then(|q| q.find_item_mut(filmcraft_project::ClipId(armed.clip))).and_then(|(_, it)| it.effects.get_mut(armed.effect))
-    {
-        e.enabled = false;
-    }
-    let rendered = app.frames.render_now(target, rate.tick_of(rate.frame_at(time)), EYEDROPPER_SCALE, &std::sync::Arc::new(project));
+    let rendered = app.frames.render_now(target, rate.tick_of(rate.frame_at(time)), EYEDROPPER_SCALE, &project);
     let Some(rgb) = rendered.and_then(|img| sample_rgb(&img, uv)) else {
         app.ui.status = tl!("Eyedropper: no picture to sample").to_string();
         return;
