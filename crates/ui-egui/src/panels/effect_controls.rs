@@ -582,6 +582,9 @@ pub(crate) fn param_row(
             app.auto.add(&format!("effectControls.{}.{}.eyedropper", e.effect, pkey), drop.rect, "Eyedropper");
             if drop.clicked() {
                 app.ui.eyedropper = if armed { None } else { Some(target) };
+                if app.ui.eyedropper.is_some() {
+                    app.ui.status = tl!("Eyedropper: click a pixel in the Program monitor (Esc cancels)").to_string();
+                }
             }
         }
         (ParamKind::Path, _) => {

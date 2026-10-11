@@ -985,6 +985,8 @@
 	Toggle animation	Activer/désactiver l'animation
 	Eyedropper (pick a color from the Program monitor)	Pipette (prélever une couleur dans le moniteur programme)
 	Eyedropper: no picture to sample	Pipette : aucune image à échantillonner
+	Eyedropper: click a pixel in the Program monitor (Esc cancels)	Pipette : cliquez sur un pixel du moniteur programme (Échap pour annuler)
+	Eyedropper: picked	Pipette : couleur prélevée
 	Add/Remove Keyframe	Ajouter/supprimer une image clé
 	Temporal Interpolation	Interpolation temporelle
 	Linear	Linéaire
