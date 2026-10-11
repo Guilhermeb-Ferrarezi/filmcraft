@@ -528,6 +528,7 @@ fn eyedropper(app: &mut FilmcraftApp, ui: &mut egui::Ui, pic: Rect, target: Targ
     });
     if over {
         ctx.set_cursor_icon(egui::CursorIcon::Crosshair);
+        crate::cursors::request(&ctx, crate::cursors::Cursor::Eyedropper);
         app.ui.status = tl!("Eyedropper: click a pixel in the Program monitor (Esc cancels)").to_string();
     }
     if !(over && released) {
