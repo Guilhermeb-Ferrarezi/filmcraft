@@ -521,6 +521,16 @@ impl FrameServer {
         self.request_job(key, time, scale, project, prio, false, late);
     }
 
+    /// Render one frame on the calling thread and return it: no queue and no cache, for a click that
+    /// needs a pixel now (the eyedropper). A render that panics gives `None` instead of taking the
+    /// window down.
+    pub fn render_now(&self, target: Target, time: Tick, scale: f32, project: &Arc<Project>) -> Option<Rgba> {
+        let key = FrameKey { target, frame: 0, size: (scale * 1000.0) as u32, revision: 0, draft: false };
+        let job =
+            Job { key, queued: Instant::now(), cancel: Default::default(), prefetch: false, catch_up: None, time, scale, project: project.clone(), prio: 0 };
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| render_job(&job, &self.pool, &self.services, &self.previews).0)).ok()
+    }
+
     fn request_job(&self, key: FrameKey, time: Tick, scale: f32, project: &Arc<Project>, prio: u32, prefetch: bool, catch_up: Option<Tick>) {
         let hit = || self.shared.stats.lock().unwrap_or_else(|e| e.into_inner()).request_hits += 1;
         if self.shared.done.lock().unwrap_or_else(|e| e.into_inner()).map.contains_key(&key)

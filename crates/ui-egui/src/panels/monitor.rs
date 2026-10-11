@@ -292,7 +292,7 @@ pub fn show(app: &mut FilmcraftApp, ui: &mut egui::Ui, rect: Rect, which: Which)
         monitor_view::zoom_pan_input(app, ui, which, video_area, pic, display_w, ppp);
     }
     if which == Which::Program && show_picture {
-        eyedropper(app, ui, &pic_resp, pic, target, rate, time);
+        eyedropper(app, ui, pic, target, rate, time);
         crate::panels::graphics::monitor_overlay(app, ui, pic, frame_size);
         crate::panels::masks::monitor_overlay(app, ui, pic, frame_size);
     }
@@ -475,63 +475,48 @@ fn cpu_texture(
     }
 }
 
-/// A click of an armed eyedropper waiting for its frame to render.
-#[derive(Clone)]
-struct EyedropperPick {
-    /// The clicked point in the picture, 0..1 across and down.
-    uv: (f32, f32),
-    key: FrameKey,
-    time: Tick,
-    /// The project with the armed effect switched off, so a colour that effect keys out can be picked.
-    project: std::sync::Arc<filmcraft_project::Project>,
-}
-
 /// Output scale of the frame an eyedropper samples (half size is plenty and quick to render).
 const EYEDROPPER_SCALE: f32 = 0.5;
 
 /// Eyedropper: while a colour parameter's eyedropper is armed (Effect Controls), the Program picture
 /// takes a crosshair and a click fills that parameter with the colour under the pointer. The colour is
 /// read from a render of the sequence at the playhead with the armed effect switched off (an Ultra Key
-/// has already removed the green it is asked to key); Esc disarms.
-fn eyedropper(app: &mut FilmcraftApp, ui: &mut egui::Ui, resp: &egui::Response, pic: Rect, target: Target, rate: filmcraft_time::FrameRate, time: Tick) {
+/// has already removed the green it is asked to key), made on the spot so the click answers at once;
+/// Esc disarms. The status bar says what is armed and what was picked.
+fn eyedropper(app: &mut FilmcraftApp, ui: &mut egui::Ui, pic: Rect, target: Target, rate: filmcraft_time::FrameRate, time: Tick) {
     let Some(armed) = app.ui.eyedropper.clone() else { return };
     let ctx = ui.ctx().clone();
-    let pending_id = egui::Id::new("eyedropper-pending");
     if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
         app.ui.eyedropper = None;
-        ctx.data_mut(|d| d.remove::<EyedropperPick>(pending_id));
         return;
     }
-    if resp.hovered() {
+    // read the pointer itself rather than a widget's response: the overlays drawn over the picture
+    // (graphics, masks, guides) are widgets of their own and can take the click
+    let (over, released, pointer) = ctx.input(|i| {
+        let at = i.pointer.hover_pos().or(i.pointer.interact_pos());
+        (at.is_some_and(|p| pic.contains(p)), i.pointer.primary_released(), at)
+    });
+    if over {
         ctx.set_cursor_icon(egui::CursorIcon::Crosshair);
+        app.ui.status = tl!("Eyedropper: click a pixel in the Program monitor (Esc cancels)").to_string();
     }
-    if resp.clicked()
-        && let (Some(pos), Target::Sequence(seq)) = (resp.interact_pointer_pos(), target)
-        && pic.width() > 0.0
-        && pic.height() > 0.0
-    {
-        let uv = (((pos.x - pic.min.x) / pic.width()).clamp(0.0, 1.0), ((pos.y - pic.min.y) / pic.height()).clamp(0.0, 1.0));
-        let mut project = (*app.session.project).clone();
-        if let Some(e) =
-            project.sequence_mut(seq).and_then(|q| q.find_item_mut(filmcraft_project::ClipId(armed.clip))).and_then(|(_, it)| it.effects.get_mut(armed.effect))
-        {
-            e.enabled = false;
-        }
-        let frame = rate.frame_at(time);
-        // a revision of its own, so this render never replaces what the monitor caches
-        let revision = app.session.revision ^ 0x5eed_d70b_0000_0000 ^ armed.clip.rotate_left(17) ^ armed.effect as u64;
-        let key = FrameKey { target, frame, size: (EYEDROPPER_SCALE * 1000.0) as u32, revision, draft: false };
-        ctx.data_mut(|d| d.insert_temp(pending_id, EyedropperPick { uv, key, time: rate.tick_of(frame), project: std::sync::Arc::new(project) }));
-    }
-    let Some(pick) = ctx.data(|d| d.get_temp::<EyedropperPick>(pending_id)) else { return };
-    app.frames.request(pick.key, pick.time, EYEDROPPER_SCALE, &pick.project, 0);
-    let Some(img) = app.frames.get(&pick.key) else {
-        ctx.request_repaint();
+    if !(over && released) {
         return;
-    };
-    ctx.data_mut(|d| d.remove::<EyedropperPick>(pending_id));
+    }
+    let (Some(pos), Target::Sequence(seq)) = (pointer, target) else { return };
+    if pic.width() <= 0.0 || pic.height() <= 0.0 {
+        return;
+    }
     app.ui.eyedropper = None;
-    let Some(rgb) = sample_rgb(&img, pick.uv) else {
+    let uv = (((pos.x - pic.min.x) / pic.width()).clamp(0.0, 1.0), ((pos.y - pic.min.y) / pic.height()).clamp(0.0, 1.0));
+    let mut project = (*app.session.project).clone();
+    if let Some(e) =
+        project.sequence_mut(seq).and_then(|q| q.find_item_mut(filmcraft_project::ClipId(armed.clip))).and_then(|(_, it)| it.effects.get_mut(armed.effect))
+    {
+        e.enabled = false;
+    }
+    let rendered = app.frames.render_now(target, rate.tick_of(rate.frame_at(time)), EYEDROPPER_SCALE, &std::sync::Arc::new(project));
+    let Some(rgb) = rendered.and_then(|img| sample_rgb(&img, uv)) else {
         app.ui.status = tl!("Eyedropper: no picture to sample").to_string();
         return;
     };
@@ -541,9 +526,10 @@ fn eyedropper(app: &mut FilmcraftApp, ui: &mut egui::Ui, resp: &egui::Response, 
     if let Some(k) = armed.mask {
         params["mask"] = json!(k);
     }
-    if let Err(e) = app.session.execute("effects.setParam", params) {
-        app.ui.status = e.to_string();
-    }
+    app.ui.status = match app.session.execute("effects.setParam", params) {
+        Ok(_) => format!("{} #{:02x}{:02x}{:02x}", tl!("Eyedropper: picked"), rgb[0], rgb[1], rgb[2]),
+        Err(e) => e.to_string(),
+    };
 }
 
 /// The average colour of the 5×5 pixels around `uv` (0..1 across and down) of a frame, so a noisy
