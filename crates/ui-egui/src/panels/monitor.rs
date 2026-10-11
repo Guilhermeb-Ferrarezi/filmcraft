@@ -504,6 +504,7 @@ fn eyedropper(app: &mut FilmcraftApp, ui: &mut egui::Ui, resp: &egui::Response, 
     }
     if resp.hovered() {
         ctx.set_cursor_icon(egui::CursorIcon::Crosshair);
+        crate::cursors::request(&ctx, crate::cursors::Cursor::Eyedropper);
     }
     if resp.clicked()
         && let (Some(pos), Target::Sequence(seq)) = (resp.interact_pointer_pos(), target)

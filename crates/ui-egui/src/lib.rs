@@ -35,6 +35,7 @@ mod cjk;
 pub mod control;
 pub mod crash;
 pub mod credits;
+pub mod cursors;
 pub mod dock;
 pub mod frames;
 pub mod header;
@@ -1975,6 +1976,7 @@ impl eframe::App for FilmcraftApp {
         }
         self.error_window(ui.ctx());
         let ctx = ui.ctx().clone();
+        cursors::finish(&ctx);
         self.last_ui_time = ctx.input(|i| i.time);
         if !self.synthetic.is_empty() {
             ctx.request_repaint();

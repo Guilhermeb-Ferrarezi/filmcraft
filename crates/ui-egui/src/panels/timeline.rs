@@ -2021,6 +2021,31 @@ fn interact(app: &mut FilmcraftApp, ui: &mut egui::Ui, seq: &Sequence, layout: &
             _ => CursorIcon::Default,
         };
         ctx.set_cursor_icon(cur);
+        // our own drawing of the cursor where there is one (the stock one above stays the fallback)
+        use crate::cursors::Cursor as C;
+        let custom = match (tool, g) {
+            (_, Grab::Edge { edge, kind, .. }) => {
+                let out = edge == filmcraft_edit::Edge::Out;
+                Some(match (kind, out) {
+                    (EdgeKind::Roll { .. }, _) => C::Roll,
+                    (EdgeKind::Stretch, _) => C::RateStretch,
+                    (EdgeKind::Ripple, false) => C::RippleIn,
+                    (EdgeKind::Ripple, true) => C::RippleOut,
+                    (_, false) => C::TrimIn,
+                    (_, true) => C::TrimOut,
+                })
+            }
+            (_, Grab::Volume { .. }) if tool == Tool::Pen || mods.command => Some(C::Pen),
+            (_, Grab::Volume { .. }) => Some(C::Volume),
+            (Tool::Razor, Grab::Other(Hit::Clip { .. })) => Some(C::Razor),
+            (Tool::Slip, Grab::Other(Hit::Clip { .. })) => Some(C::Slip),
+            (Tool::Slide, Grab::Other(Hit::Clip { .. })) => Some(C::Slide),
+            (Tool::Zoom, _) => Some(if mods.alt { C::ZoomOut } else { C::ZoomIn }),
+            _ => None,
+        };
+        if let Some(c) = custom {
+            crate::cursors::request(&ctx, c);
+        }
         // the edge a press here would grab, and the trim it starts (#259)
         if let Grab::Edge { track, clip, edge, kind } = g {
             super::trim_monitor::paint_hover_bracket(ui.painter(), seq, layout, track, clip, edge, kind);
