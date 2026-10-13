@@ -626,9 +626,9 @@ pub(crate) fn param_row(
             });
         }
         (ParamKind::Color, ParamValue::Color(c)) => {
-            let mut rgba = egui::Rgba::from_rgba_unmultiplied(c[0], c[1], c[2], c[3]);
-            if egui::color_picker::color_edit_button_rgba(&mut vui, &mut rgba, egui::color_picker::Alpha::Opaque).changed() {
-                set = Some(json!([rgba.r(), rgba.g(), rgba.b(), rgba.a()]));
+            let mut swatch = swatch_color(c);
+            if egui::color_picker::color_edit_button_srgba(&mut vui, &mut swatch, egui::color_picker::Alpha::Opaque).changed() {
+                set = Some(json!(swatch_value(swatch, c[3])));
             }
             // Eyedropper: arm it, then click a pixel in the Program monitor (Esc cancels)
             let target = crate::state::Eyedropper { clip: clip.0, effect: idx, param: pd.id.to_string(), mask };
@@ -637,6 +637,9 @@ pub(crate) fn param_row(
             app.auto.add(&format!("effectControls.{}.{}.eyedropper", e.effect, pkey), drop.rect, "Eyedropper");
             if drop.clicked() {
                 app.ui.eyedropper = if armed { None } else { Some(target) };
+                if app.ui.eyedropper.is_some() {
+                    app.ui.status = tl!("Eyedropper: click a pixel in the Program monitor (Esc cancels)").to_string();
+                }
             }
         }
         (ParamKind::Path, _) => {
@@ -812,9 +815,9 @@ pub fn lumetri_panel(app: &mut FilmcraftApp, ui: &mut egui::Ui, rect: Rect) {
                             actions.push(json!({"clip": clip.0, "effect": idx, "param": pd.id, "value": pd.default.as_f64().unwrap_or(0.0)}));
                         }
                     } else if let ParamValue::Color(c) = v {
-                        let mut rgba = egui::Rgba::from_rgba_unmultiplied(c[0], c[1], c[2], c[3]);
-                        if egui::color_picker::color_edit_button_rgba(ui, &mut rgba, egui::color_picker::Alpha::Opaque).changed() {
-                            actions.push(json!({"clip": clip.0, "effect": idx, "param": pd.id, "value": [rgba.r(), rgba.g(), rgba.b(), 1.0]}));
+                        let mut swatch = swatch_color(&c);
+                        if egui::color_picker::color_edit_button_srgba(ui, &mut swatch, egui::color_picker::Alpha::Opaque).changed() {
+                            actions.push(json!({"clip": clip.0, "effect": idx, "param": pd.id, "value": swatch_value(swatch, 1.0)}));
                         }
                     }
                 });
@@ -1041,6 +1044,20 @@ pub(crate) fn run(app: &mut FilmcraftApp, ctx: &egui::Context, actions: Vec<(Str
     } else if !down {
         ctx.data_mut(|d| d.remove::<Option<f64>>(key));
     }
+}
+
+/// A colour parameter as its swatch colour. Colour parameters are straight sRGB-encoded values,
+/// the `#rrggbb` ÷ 255 that the renderer, `effects.setParam` and presets use, so the swatch shows
+/// them as they are (the picker's linear `Rgba` would show them too bright, and store what it
+/// picked as a linear value the renderer then reads as encoded).
+fn swatch_color(c: &[f32; 4]) -> Color32 {
+    let q = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
+    Color32::from_rgb(q(c[0]), q(c[1]), q(c[2]))
+}
+
+/// The colour parameter value (see [`swatch_color`]) for a colour picked in a swatch.
+pub(crate) fn swatch_value(c: Color32, alpha: f32) -> [f32; 4] {
+    [f32::from(c.r()) / 255.0, f32::from(c.g()) / 255.0, f32::from(c.b()) / 255.0, alpha]
 }
 
 pub(crate) fn graph_key(clip: ClipId, idx: usize, pid: &str) -> String {
@@ -1277,6 +1294,29 @@ mod param_text_tests {
         assert_eq!(param_text(&p, "curve_luma", &ParamValue::Curve(vec![[0.0, 0.0], [1.0, 1.0]])), "Default");
         assert_eq!(param_text(&p, "hue_vs_sat", &ParamValue::Curve(vec![])), "Default");
         assert_eq!(param_text(&p, "curve_luma", &ParamValue::Curve(vec![[0.0, 0.0], [0.5, 0.6], [1.0, 1.0]])), "Custom (3 points)");
+    }
+}
+
+#[cfg(test)]
+mod swatch_tests {
+    use super::*;
+
+    /// Colour parameters are `#rrggbb` ÷ 255 (what the renderer, `effects.setParam` and presets
+    /// use), so a swatch colour maps straight onto them and back.
+    #[test]
+    fn swatch_colours_are_the_encoded_parameter_values() {
+        let green = Color32::from_rgb(0x00, 0xcc, 0x33);
+        let v = swatch_value(green, 1.0);
+        let want = [0.0, 0.8, 0.2, 1.0];
+        assert!(v.iter().zip(want).all(|(a, b)| (a - b).abs() < 1e-6), "{v:?}");
+        assert_eq!(swatch_color(&v), green);
+        // the default Ultra Key colour shows as the green it renders, not a brighter one
+        assert_eq!(swatch_color(&[0.0, 0.8, 0.2, 1.0]), green);
+    }
+
+    #[test]
+    fn swatch_colour_tolerates_out_of_range_values() {
+        assert_eq!(swatch_color(&[-1.0, 2.0, f32::NAN, 1.0]), Color32::from_rgb(0, 255, 0));
     }
 }
 

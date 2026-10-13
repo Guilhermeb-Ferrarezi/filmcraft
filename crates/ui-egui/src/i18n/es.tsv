@@ -989,6 +989,8 @@
 	Toggle animation	Activar/desactivar animación
 	Eyedropper (pick a color from the Program monitor)	Cuentagotas (tomar un color del monitor de programa)
 	Eyedropper: no picture to sample	Cuentagotas: no hay imagen de la que tomar el color
+	Eyedropper: click a pixel in the Program monitor (Esc cancels)	Cuentagotas: haz clic en un píxel del monitor de programa (Esc cancela)
+	Eyedropper: picked	Cuentagotas: color tomado
 	Add/Remove Keyframe	Añadir/quitar fotograma clave
 	Temporal Interpolation	Interpolación temporal
 	Linear	Lineal

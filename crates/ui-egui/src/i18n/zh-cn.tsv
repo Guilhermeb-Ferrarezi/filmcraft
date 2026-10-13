@@ -3530,6 +3530,8 @@
 	tracks	轨道
 	Eyedropper (pick a color from the Program monitor)	吸管（从节目监视器中拾取颜色）
 	Eyedropper: no picture to sample	吸管：没有可取样的画面
+	Eyedropper: click a pixel in the Program monitor (Esc cancels)	吸管：在节目监视器中单击一个像素（按 Esc 取消）
+	Eyedropper: picked	吸管：已拾取
 	In	入点
 	Out	出点
 	Export Markers as CSV…	将标记导出为 CSV…
