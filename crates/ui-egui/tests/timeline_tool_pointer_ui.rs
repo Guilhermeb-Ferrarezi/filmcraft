@@ -11,6 +11,7 @@ use filmcraft_engine::Session;
 use filmcraft_project::ClipId;
 use filmcraft_ui_egui::FilmcraftApp;
 use filmcraft_ui_egui::control::ControlRequest;
+use filmcraft_ui_egui::cursors::Cursor;
 use serde_json::{Value, json};
 
 /// A clip of the demo project on V1, linked to its audio.
@@ -81,6 +82,11 @@ impl Driver {
     fn cursor(&self) -> CursorIcon {
         self.harness.output().platform_output.cursor_icon
     }
+
+    /// The cursor the app drew in place of the system one, if any.
+    fn shown(&self) -> Option<Cursor> {
+        filmcraft_ui_egui::cursors::shown(&self.harness.ctx)
+    }
 }
 
 impl Driver {
@@ -109,13 +115,18 @@ fn the_editing_tools_draw_their_own_pointer_over_the_tracks() {
         d.frames(2);
         d.hover(at);
         assert_eq!(d.cursor(), CursorIcon::None, "{tool}: its own icon is the pointer, the system one hidden");
+        assert!(matches!(d.shown(), Some(Cursor::ToolIcon(_))), "{tool}: drew {:?}", d.shown());
     }
-    // the tools that have a system pointer keep it, and so does the Selection tool
-    for (tool, icon) in [("Selection", CursorIcon::Default), ("Hand", CursorIcon::Grab), ("Zoom", CursorIcon::ZoomIn)] {
+    // the Selection tool keeps the system arrow; Hand and Zoom draw their own pointer
+    d.ok("ui.set", json!({"tool": "Selection"}));
+    d.frames(2);
+    d.hover(at);
+    assert_eq!((d.cursor(), d.shown()), (CursorIcon::Default, None), "Selection");
+    for (tool, drawn) in [("Hand", Cursor::HandOpen), ("Zoom", Cursor::ZoomIn)] {
         d.ok("ui.set", json!({"tool": tool}));
         d.frames(2);
         d.hover(at);
-        assert_eq!(d.cursor(), icon, "{tool}");
+        assert_eq!((d.cursor(), d.shown()), (CursorIcon::None, Some(drawn)), "{tool}");
     }
 }
 

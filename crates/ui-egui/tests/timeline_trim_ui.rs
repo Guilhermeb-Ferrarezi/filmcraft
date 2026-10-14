@@ -11,6 +11,7 @@ use filmcraft_engine::Session;
 use filmcraft_project::ClipId;
 use filmcraft_ui_egui::FilmcraftApp;
 use filmcraft_ui_egui::control::ControlRequest;
+use filmcraft_ui_egui::cursors::Cursor;
 use serde_json::{Value, json};
 
 /// Two clips of the demo project that share a cut on V1.
@@ -100,6 +101,11 @@ impl Driver {
     /// The cursor the last frame asked for.
     fn cursor(&self) -> CursorIcon {
         self.harness.output().platform_output.cursor_icon
+    }
+
+    /// The cursor the app drew in place of the system one, if any.
+    fn shown(&self) -> Option<Cursor> {
+        filmcraft_ui_egui::cursors::shown(&self.harness.ctx)
     }
 
     /// Render the window to `<target tmp>/ui-screenshots/<name>.png` (needs a GPU).
@@ -242,7 +248,10 @@ fn cursor_hit_test_and_press_agree_at_a_cut() {
     let hit = |d: &mut Driver, x: f32, mods: Value| d.ok("ui.timeline.hit", json!({"x": x, "y": y, "modifiers": mods}));
     for (x, clip, edge) in [(cut - 3.0, city, "Out"), (cut + 3.0, dunes, "In")] {
         d.hover(pos2(x, y));
-        assert_eq!(d.cursor(), CursorIcon::ResizeColumn, "trim cursor at x {x}");
+        // the system pointer is hidden and the edge's own trim cursor drawn
+        assert_eq!(d.cursor(), CursorIcon::None, "trim cursor at x {x}");
+        let trim = if edge == "Out" { Cursor::TrimOut } else { Cursor::TrimIn };
+        assert_eq!(d.shown(), Some(trim), "the {edge} edge's trim cursor at x {x}");
         let h = hit(&mut d, x, json!({}));
         assert_eq!((h["clip"].as_u64(), h["edge"].as_str(), h["kind"].as_str()), (Some(clip), Some(edge), Some("trim")), "at x {x}: {h}");
         let h = hit(&mut d, x, json!({"command": true}));

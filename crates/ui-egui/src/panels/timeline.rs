@@ -310,16 +310,6 @@ fn tool_draws_pointer(tool: Tool) -> bool {
     )
 }
 
-/// The tool's icon centred on the pointer, outlined so it reads over clips of any colour.
-fn paint_tool_pointer(ctx: &egui::Context, tool: Tool, at: Pos2) {
-    let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Tooltip, egui::Id::new("tool-pointer")));
-    let r = Rect::from_center_size(at, vec2(20.0, 20.0));
-    for d in [vec2(-1.0, 0.0), vec2(1.0, 0.0), vec2(0.0, -1.0), vec2(0.0, 1.0)] {
-        icons::paint(&painter, r.translate(d), tool.icon(), Color32::BLACK);
-    }
-    icons::paint(&painter, r, tool.icon(), Color32::WHITE);
-}
-
 /// The tracks the Razor's preview line crosses at the pointer over `clip`: the clip's own and its
 /// linked clips' tracks, or every track with Shift (what `timeline.razor` cuts).
 pub fn razor_line_tracks(app: &FilmcraftApp, clip: ClipId, shift: bool) -> Vec<TrackId> {
@@ -2355,11 +2345,37 @@ fn interact(app: &mut FilmcraftApp, ui: &mut egui::Ui, seq: &Sequence, layout: &
             }
         };
         ctx.set_cursor_icon(cur);
-        // the editing tools show their own icon as the pointer wherever they act in the tracks (the
-        // system pointer is hidden); a blocked edit, a volume line and the ruler keep the system one
-        if !blocked && tool_draws_pointer(tool) && !matches!(g, Grab::Volume { .. } | Grab::Other(Hit::Ruler | Hit::None)) {
-            ctx.set_cursor_icon(CursorIcon::None);
-            paint_tool_pointer(&ctx, tool, p);
+        // the drawn pointer (the system pointer above is the fallback, and stays for a blocked edit
+        // and the ruler): an edge shows the trim a press starts, on which side and of what kind; the
+        // editing tools show their own icon wherever they act in the tracks; a Volume line, the Pen
+        // and the Zoom tool have their own
+        use crate::cursors::Cursor as C;
+        let custom = if blocked {
+            None
+        } else {
+            match (tool, g) {
+                (_, Grab::Other(Hit::Ruler | Hit::None)) => None,
+                (_, Grab::Edge { edge, kind, .. }) => {
+                    let out = edge == filmcraft_edit::Edge::Out;
+                    Some(match (kind, out) {
+                        (EdgeKind::Roll { .. }, _) => C::Roll,
+                        (EdgeKind::Stretch, _) => C::RateStretch,
+                        (EdgeKind::Ripple, false) => C::RippleIn,
+                        (EdgeKind::Ripple, true) => C::RippleOut,
+                        (_, false) => C::TrimIn,
+                        (_, true) => C::TrimOut,
+                    })
+                }
+                (_, Grab::Volume { .. }) if tool == Tool::Pen || mods.command => Some(C::Pen),
+                (_, Grab::Volume { .. }) => Some(C::Volume),
+                (t, _) if tool_draws_pointer(t) => Some(C::ToolIcon(t.icon())),
+                (Tool::Pen, _) => Some(C::Pen),
+                (Tool::Zoom, _) => Some(if mods.alt { C::ZoomOut } else { C::ZoomIn }),
+                _ => None,
+            }
+        };
+        if let Some(c) = custom {
+            crate::cursors::request(&ctx, c);
         }
         // the edge a press here would grab, and the trim it starts (#259)
         if let Grab::Edge { track, clip, edge, kind } = g {
