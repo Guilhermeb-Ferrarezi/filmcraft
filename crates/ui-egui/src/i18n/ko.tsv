@@ -1100,6 +1100,8 @@
 	Extract selected text	선택한 텍스트 추출
 	Eyedropper (pick a color from the Program monitor)	스포이드(프로그램 모니터에서 색상 선택)
 	Eyedropper: no picture to sample	스포이드: 샘플링할 화면 없음
+	Eyedropper: click a pixel in the Program monitor (Esc cancels)	스포이드: 프로그램 모니터에서 픽셀을 클릭하세요(Esc로 취소)
+	Eyedropper: picked	스포이드: 색상 선택됨
 	Face Detection (protect skin tones)	얼굴 감지(피부 톤 보호)
 	Fade	페이드
 	Fade In	페이드 인

@@ -3581,6 +3581,8 @@
 	Resize floating panel	フローティングパネルのサイズを変更
 	Eyedropper (pick a color from the Program monitor)	スポイト (プログラムモニターから色を取得)
 	Eyedropper: no picture to sample	スポイト: 色を取得できる画像がありません
+	Eyedropper: click a pixel in the Program monitor (Esc cancels)	スポイト: プログラムモニターのピクセルをクリック (Esc でキャンセル)
+	Eyedropper: picked	スポイト: 色を取得しました
 	In	イン
 	Out	アウト
 	More transport controls	その他の再生コントロール

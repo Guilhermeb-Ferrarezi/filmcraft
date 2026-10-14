@@ -994,6 +994,8 @@
 	Toggle animation	Alihkan animasi
 	Eyedropper (pick a color from the Program monitor)	Pipet (ambil warna dari monitor Program)
 	Eyedropper: no picture to sample	Pipet: tidak ada gambar untuk diambil sampelnya
+	Eyedropper: click a pixel in the Program monitor (Esc cancels)	Pipet: klik sebuah piksel di monitor Program (Esc untuk batal)
+	Eyedropper: picked	Pipet: warna diambil
 	Add/Remove Keyframe	Tambah/Hapus Bingkai Kunci
 	Temporal Interpolation	Interpolasi Temporal
 	Linear	Linier

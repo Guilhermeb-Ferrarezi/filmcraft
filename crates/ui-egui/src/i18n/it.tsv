@@ -986,6 +986,8 @@
 	Toggle animation	Attiva/disattiva animazione
 	Eyedropper (pick a color from the Program monitor)	Contagocce (preleva un colore dal monitor programma)
 	Eyedropper: no picture to sample	Contagocce: nessuna immagine da campionare
+	Eyedropper: click a pixel in the Program monitor (Esc cancels)	Contagocce: fai clic su un pixel del monitor programma (Esc per annullare)
+	Eyedropper: picked	Contagocce: colore prelevato
 	Add/Remove Keyframe	Aggiungi/rimuovi fotogramma chiave
 	Temporal Interpolation	Interpolazione temporale
 	Linear	Lineare
